@@ -1,0 +1,24 @@
+Author: Dave Jones <dave.jones@canonical.com>
+Origin: https://github.com/legionus/kbd/pull/50
+Description: Call to ERR uses pipe_cmd after it's been freed a few lines above
+
+--- a/src/libkbdfile/kbdfile.c
++++ b/src/libkbdfile/kbdfile.c
+@@ -116,15 +116,15 @@
+ 	fp->fd = popen(pipe_cmd, "r");
+ 	fp->flags |= KBDFILE_PIPE;
+ 
+-	free(pipe_cmd);
+-
+ 	if (!(fp->fd)) {
+ 		char buf[200];
+ 		strerror_r(errno, buf, sizeof(buf));
+ 		ERR(fp->ctx, "popen: %s: %s", pipe_cmd, buf);
++		free(pipe_cmd);
+ 		return -1;
+ 	}
+ 
++	free(pipe_cmd);
+ 	return 0;
+ }
+ 

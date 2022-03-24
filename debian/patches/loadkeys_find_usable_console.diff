@@ -1,0 +1,96 @@
+Description: Make it safer to run loadkeys with foreground console in raw mode
+ If not invoked with an explicit console parameter, try to find any console
+ not in raw mode.  This makes it safer to run loadkeys if the foreground
+ console might be in raw mode, for example if Plymouth or X might be
+ running.
+Author: Colin Watson <cjwatson@ubuntu.com>
+Author: Steve Langasek <steve.langasek@ubuntu.com>
+Forwarded: no
+Last-Update: 2016-09-20
+
+---
+ src/libcommon/getfd.c    |   53 +++++++++++++++++++++++++++++++++++++++++++++++++++++
+ src/libcommon/getfd.h    |    2 +
+ src/loadkeys.c |    5 ++++-
+ 3 files changed, 58 insertions(+), 1 deletion(-)
+
+--- a/src/libcommon/getfd.c
++++ b/src/libcommon/getfd.c
+@@ -91,3 +91,56 @@
+ 	/* total failure */
+ 	exit(1);
+ }
++
++static int
++kbmode(int fd) {
++	int mode;
++
++	if (ioctl(fd, KDGKBMODE, &mode) < 0)
++		return -1;
++	else
++		return mode;
++}
++
++/* Get a file descriptor suitable for setting the keymap.  Anything not in
++ * raw mode will do - it doesn't have to be the foreground console - but we
++ * prefer Unicode if we can get it.
++ */
++int
++getfd_keymap(void) {
++	int fd, bestfd = -1;
++	char ttyname[sizeof("/dev/ttyNN")] = "/dev/tty";
++	int i;
++
++#define CHECK_FD_KEYMAP do { \
++	if (is_a_console(fd)) { \
++		int mode = kbmode(fd); \
++		if (mode == K_UNICODE) { \
++			if (bestfd != -1) \
++				close(bestfd); \
++			return fd; \
++		} else if (mode == K_XLATE && bestfd == -1) \
++			bestfd = fd; \
++		else \
++			close(fd); \
++	} else \
++		close(fd); \
++} while (0)
++
++	for (i = 0; conspath[i]; i++) {
++		if ((fd = open_a_console(conspath[i])) >= 0)
++			CHECK_FD_KEYMAP;
++	}
++
++	for (i = 1; i <= 12; ++i) {
++		snprintf(ttyname + sizeof("/dev/tty") - 1, 3, "%d", i);
++		if ((fd = open_a_console(ttyname)) >= 0)
++			CHECK_FD_KEYMAP;
++	}
++
++	fprintf(stderr,
++		_("Couldn't get a file descriptor referring to the console\n"));
++
++	/* total failure */
++	exit(1);
++}
+--- a/src/libcommon/libcommon.h
++++ b/src/libcommon/libcommon.h
+@@ -41,6 +41,7 @@
+ 
+ // getfd.c
+ int getfd(const char *fnam);
++int getfd_keymap(void);
+ 
+ // version.c
+ const char *get_progname(void);
+--- a/src/loadkeys.c
++++ b/src/loadkeys.c
+@@ -200,7 +200,7 @@
+ 
+ 	if (!(options & OPT_M) && !(options & OPT_B)) {
+ 		/* get console */
+-		if ((fd = getfd(console)) < 0)
++		if ((fd = console ? getfd(console) : getfd_keymap()) < 0)
+ 			kbd_error(EXIT_FAILURE, 0, _("Couldn't get a file descriptor referring to the console."));
+ 
+ 		/* check whether the keyboard is in Unicode mode */
