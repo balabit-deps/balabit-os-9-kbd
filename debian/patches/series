@@ -8,3 +8,4 @@ Do-not-install-internal-library.patch
 loadkeys_find_usable_console.diff
 loadkeys_ckbcomp.diff
 fix_use_after_free.patch
+libkfont-Use-only-KDFONTOP.patch
